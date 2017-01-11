@@ -1,0 +1,38 @@
+from __future__ import division
+from nltk.tokenize import treebank
+years = []
+contents = open('sotus/contents.txt','r')
+for line in contents:
+    words = line.split(",")
+    if words.__len__() > 2:
+        word = words[-1]
+        years.append(word.strip())
+
+posWords = open('sotus/positive.txt','r')
+negWords = open('sotus/negative.txt','r')
+positive = []
+negative = []
+for line in posWords:
+    positive.extend(line.split(","))
+for line in negWords:
+    negative.extend(line.split(","))
+
+
+sotuSenti = open('sotus/sentiment.txt', 'w')
+tokenizer = treebank.TreebankWordTokenizer()
+
+for i in range(1,225):
+    f = open('sotus/sotu_'+str(i)+'.txt', 'r')
+    pos_words = 0
+    neg_words = 0
+    for line in f:
+        tokenized_sent = [word.lower() for word in tokenizer.tokenize(line)]
+
+        for word in tokenized_sent:
+            if word in positive:
+                pos_words += 1
+            elif word in negative:
+                neg_words += 1
+
+    percent = (neg_words / (pos_words+neg_words))*100
+    sotuSenti.write(str(years[i])+"," +str(percent)+"\n")
