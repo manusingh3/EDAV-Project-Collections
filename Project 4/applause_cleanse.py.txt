@@ -1,0 +1,172 @@
+import numpy as np
+import pandas as pd
+from nltk.stem.lancaster import LancasterStemmer
+st = LancasterStemmer()
+from nltk.corpus import stopwords
+stop = stopwords.words('english')
+from nltk.tokenize import RegexpTokenizer
+toker = RegexpTokenizer(r'((?<=[^\w\s])\w(?=[^\w\s])|(\W))+', gaps=True)
+from operator import itemgetter
+
+#transform lexicon to a dictionary with key=word, value=sentiment score
+lex2=pd.read_csv('lex.csv')
+sent={}
+for i in range(len(lex2)):
+    w=lex2.loc[i]['word']
+    x=lex2.loc[i]['pos-neg']
+    sent[w]=x
+
+#for counting the number of applauses in each address
+
+locs={}
+for j in range(208,217):
+    txt='sotu_'+str(j)+'.txt'
+    f=open(txt,'r')
+    string=f.read()
+    ss=string.split(' ')
+    l=len(ss)
+    locs[j]=[]
+    for i in range(len(ss)):
+        if 'Applause' in ss[i] or 'applause' in ss[i]:
+            locs[j].append(float(i)/l)
+
+ [len(x) for x in locs.values()]
+ 
+#functions to be used to generate training and testing data
+ def xlen(x):
+    x=x['sentence'].split(' ')
+    x=[w.lower() for w in x]
+    return len(x)
+
+ def sent_score(x):
+    x=x['sentence'].split(' ')
+    x=[w.lower() for w in x]
+    score=0
+    maxx=0
+    minn=0
+    
+    for w in x:
+        sc=0
+        if w in sent.keys():
+            score+= sent[w]
+            sc=sent[w]
+        elif st.stem(w) in sent.keys():
+            score+= sent[st.stem(w)]
+            sc=sent[st.stem(w)]
+        if sc>maxx:
+            maxx=sc
+        elif sc<min:
+            minn=sc
+    return pd.Series([score,maxx,minn])
+
+def auth(x):
+    x=x['sentence'].split(' ')
+    x=[w.lower() for w in x]
+    I_=0
+    we_=0
+    for w in x:
+        if w in ['i','me','mine','my','am','myself']:
+            I_+=1
+        elif w in ['we','us','our','ours','ourselves','let\'s']:
+            we_+=1
+    return pd.Series([I_,we_])
+
+def numeric(x):
+    num_words=['thousand','thousands','hundred','hundreds','million','millions','billion','billions','trillion','trillions',
+               'percent','increase','increased','decrease','decreased','rise','increasing','decreasing','remains']
+    num=0
+    x=x['sentence'].split(' ')
+    x=[w.lower() for w in x]
+    x=[w.replace(",", "") for w in x]
+    def tt(x):
+        z=0
+        if x in num_words:
+            z=1
+        elif len(x)>1 and x[0]=='$':
+            z=1
+        else:
+            try:
+                z = float(x)
+                z=1
+            except ValueError:
+                z= 0
+        return z
+    for w in x:
+        num+=tt(w)
+    return pd.Series([int(num>0),num])
+
+def feat(x):
+    txt='sotu_'+str(x)+'.txt'
+    lines = open(txt).read().splitlines()
+    b=""
+    for line in lines:
+        b=b+line+" "
+    bs=b.split('. ')
+    #print x,len(bs)
+    f208=pd.DataFrame(np.random.randn(len(bs), 2))
+    f208.columns=['sentence','label']
+    f208['sentence']=bs
+    f208['label']=0
+    for i in range(1,len(bs)):
+        if 'applause' in bs[i] or 'Applause' in bs[i]:
+            f208['label'][i-1]=1
+    if 'applause' in bs[-1] or 'Applause'  in bs[-1]:
+        f208=f208.loc[0:len(bs)-2]
+    #remove the trivial case of last line ='applause'
+    f208['len']=f208.apply(xlen, axis=1)
+    f208['score']=f208.apply(sent_score, axis=1)[0]
+    f208['max']=f208.apply(sent_score, axis=1)[1]
+    f208['min']=f208.apply(sent_score, axis=1)[2]
+    #print 'pathos'
+    f208['i']=f208.apply(auth, axis=1)[0]
+    f208['we']=f208.apply(auth, axis=1)[1]
+    #print 'ethos'
+    f208['has_number']=f208.apply(numeric, axis=1)[0]
+    f208['num']=f208.apply(numeric, axis=1)[1]
+    #print 'logos'
+    f208.to_csv(str(x)+'.csv')
+
+#reading the training file and generate csv
+ for x in [208,209,210]+range(212,217):
+    feat(x)
+
+#yield the big training data matrix with all Bush's speeches except the 2003 one (f211)
+x=pd.read_csv(str(208)+'.csv')
+f=x
+f['year']=208
+for a in [209,210]+range(212,217):
+    x=pd.read_csv(str(a)+'.csv')
+    x['year']=a
+    f=pd.concat([f,x])
+f=f.rename(columns = {'Unnamed: 0':'X'})
+f.to_csv('train_applause.csv',index=False)
+
+#generate the 2003 test data, later to be renamed as 'Bush_2003.csv'
+feat(211)
+
+
+#get the top 3 keywords in each of the 10 chuncks of Bush's 2003 address
+def top3 (x,bss):
+    sect=bss[len(bss)/10*x:len(bss)/10*(x+1)]
+    
+    sect=[x.lower() for x in sect]
+    sect=[x for x in sect if not x in stop]
+    sect=[x for x in sect if 'applause' not in x]
+    sect=[x for x in sect if x not in ['people','many','one','must','every']]
+    sect=[x for x in sect if len(x)>1]
+    tf={}
+    for x in sect:
+        if x in tf.keys():
+            tf[x]+=1
+        else:
+            tf[x]=1
+    return sorted(tf.items(), key=itemgetter(1),reverse=True)
+
+tops={}
+for x in range(10):
+    temp=top3(x,bss)
+    tops[x]=[a[0] for a in temp[0:3]]
+for k in tops.keys():
+    tops[k]=' '.join(tops[k])
+' '.join(tops.values())
+
