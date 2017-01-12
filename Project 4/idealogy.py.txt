@@ -1,0 +1,101 @@
+#word list
+#document vector
+#
+from nltk.tokenize import treebank
+from sklearn import svm
+from nltk.stem.lancaster import LancasterStemmer
+st = LancasterStemmer()
+sotuIdlg = open('sotus/idealogy.txt', 'w')
+tokenizer = treebank.TreebankWordTokenizer()
+def hasNumbers(inputString):
+     return any(char.isdigit() for char in inputString)
+
+def clean(tokenized_sent):
+    clean_tokens = []
+    for token in tokenized_sent:
+        if token in ['!', '$', '%', '&', "'", "''"] or   hasNumbers(token):
+            continue
+        else :
+            if token[-1] == ".":
+                token = token[:-1]
+            clean_tokens.append(st.stem(token))
+    return clean_tokens
+
+years = []
+contents = open('sotus/contents.txt','r')
+for line in contents:
+    words = line.split(",")
+    if words.__len__() > 2:
+        word = words[-1]
+        years.append(word.strip())
+
+docWords = []
+globalWords = {}
+for i in range(1,225):
+    f = open('sotus/sotu_'+str(i)+'.txt', 'r')
+    wordsInFile = []
+    for line in f:
+        tokenized_sent = [word.lower()   for word in tokenizer.tokenize(line)]
+        wordsInFile.extend(clean(tokenized_sent))
+    docWords.insert(i,wordsInFile)
+    for word in wordsInFile:
+        if word not in globalWords:
+            globalWords[word] = len(globalWords)
+
+removeWords = []
+for word in docWords[0]:
+    wordCount = 0
+    for doc in docWords:
+        if word in doc:
+            wordCount += 1
+    if wordCount > 200 and word not in removeWords:
+        removeWords.append(word)
+
+print len(globalWords)
+for word in removeWords:
+    globalWords.pop(word,None)
+
+i=1
+for key,value in globalWords.iteritems():
+   globalWords[key] = i
+   i+=1
+print len(globalWords)
+print sorted(globalWords)
+documentMap = {}
+for i in range(1,225):
+    doc = docWords[i-1]
+    wordInDoc =[0] * (len(globalWords)+1)
+    for word in doc:
+        if word in globalWords:
+            wordNum = globalWords[word]
+            if wordNum not in wordInDoc:
+                wordInDoc[wordNum] = 1
+            else:
+                wordInDoc[wordNum] += 1
+    documentMap[i] = wordInDoc
+
+
+
+#from clear politics use the  33 sotus
+tagged = [value for key, value in documentMap.iteritems() if key > 190 and key < 223]
+#documentVector[191:222]
+#labels = ['center-right','right','right','right','right','right','right','right','right','center-right','right',0,
+#          -1,'left','left','left',-1,-1,-1,-1,
+#          'right','right','center-right',0,'center-right','center-right','center-right','center-right',
+#          -1,'left','left','ultra-left','ultra-left','ultra-left']
+labels = [1, 2, 2, 2 ,2, 2, 2, 2, 2, 2, 1,
+            0, 0, 0, 0, 0, 0,
+          2, 2, 2, 2, 1, 2, 2, 2, 2,
+          0, 0, 0, 0, 0, 0]
+
+clf = svm.SVC(C=1000000.0, gamma='auto', kernel='rbf')
+clf.fit(tagged, labels)
+predictDocs = []
+predResults = []
+for key,value in documentMap.iteritems():
+    predictDocs.append(value)
+pred = clf.predict(predictDocs)
+
+for i in range(1,225):
+    sotuIdlg.write(str(years[i]) +","+str(pred[i])+"\n")
+
